@@ -1,132 +1,157 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const { app } = require('electron');
 
-// Get the user data directory for storing the database
-const userDataPath = app.getPath('userData');
-const dbPath = path.join(userDataPath, 'habitron.db');
+const dbFolder = path.join(app.getPath("userData"), "Consist");
+const dbPath = path.join(dbFolder, "consist.db");
 
-// Initialize the database
-let db;
+console.log("User data path:", app.getPath("userData"));
+console.log("Database folder path:", dbFolder);
+console.log("Database file path:", dbPath);
 
-function initDatabase() {
-  if (!db) {
-    db = new Database(dbPath);
-
-    // Create tables if they don't exist
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        description TEXT,
-        status TEXT DEFAULT 'pending',
-        priority INTEGER DEFAULT 2,
-        due_date TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS settings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        key TEXT UNIQUE NOT NULL,
-        value TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Enable foreign keys
-    db.pragma('foreign_keys = ON');
-  }
-  return db;
+if (!fs.existsSync(dbFolder)) {
+  fs.mkdirSync(dbFolder, { recursive: true });
+  console.log("Created Consist folder.");
 }
+
+const db = new sqlite3.Database(dbPath);
+console.log("Database initialized successfully.");
+
+// Create tables if they don't exist
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'pending',
+      priority INTEGER DEFAULT 2,
+      due_date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+});
 
 // Task operations
 function getAllTasks() {
-  const database = initDatabase();
-  const stmt = database.prepare('SELECT * FROM tasks ORDER BY created_at DESC');
-  return stmt.all();
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM tasks ORDER BY created_at DESC', (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
 }
 
 function createTask(task) {
-  const database = initDatabase();
-  const stmt = database.prepare(`
-    INSERT INTO tasks (title, description, status, priority, due_date)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  const result = stmt.run(task.title, task.description || '', task.status || 'pending', task.priority || 2, task.due_date || null);
-  return { id: result.lastInsertRowid, ...task, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  return new Promise((resolve, reject) => {
+    db.run(`
+      INSERT INTO tasks (title, description, status, priority, due_date)
+      VALUES (?, ?, ?, ?, ?)
+    `, [task.title, task.description || '', task.status || 'pending', task.priority || 2, task.due_date || null], function(err) {
+      if (err) reject(err);
+      else {
+        db.get('SELECT * FROM tasks WHERE id = ?', [this.lastID], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      }
+    });
+  });
 }
 
 function updateTask(id, updates) {
-  const database = initDatabase();
-  const fields = [];
-  const values = [];
+  return new Promise((resolve, reject) => {
+    const fields = [];
+    const values = [];
 
-  if (updates.title !== undefined) {
-    fields.push('title = ?');
-    values.push(updates.title);
-  }
-  if (updates.description !== undefined) {
-    fields.push('description = ?');
-    values.push(updates.description);
-  }
-  if (updates.status !== undefined) {
-    fields.push('status = ?');
-    values.push(updates.status);
-  }
-  if (updates.priority !== undefined) {
-    fields.push('priority = ?');
-    values.push(updates.priority);
-  }
-  if (updates.due_date !== undefined) {
-    fields.push('due_date = ?');
-    values.push(updates.due_date);
-  }
+    if (updates.title !== undefined) {
+      fields.push('title = ?');
+      values.push(updates.title);
+    }
+    if (updates.description !== undefined) {
+      fields.push('description = ?');
+      values.push(updates.description);
+    }
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.priority !== undefined) {
+      fields.push('priority = ?');
+      values.push(updates.priority);
+    }
+    if (updates.due_date !== undefined) {
+      fields.push('due_date = ?');
+      values.push(updates.due_date);
+    }
 
-  if (fields.length > 0) {
-    fields.push('updated_at = CURRENT_TIMESTAMP');
-    const stmt = database.prepare(`UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`);
-    values.push(id);
-    stmt.run(...values);
-  }
-
-  // Return the updated task
-  const selectStmt = database.prepare('SELECT * FROM tasks WHERE id = ?');
-  return selectStmt.get(id);
+    if (fields.length > 0) {
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(id);
+      db.run(`UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`, values, (err) => {
+        if (err) reject(err);
+        else {
+          db.get('SELECT * FROM tasks WHERE id = ?', [id], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        }
+      });
+    } else {
+      reject(new Error('No fields to update'));
+    }
+  });
 }
 
 function deleteTask(id) {
-  const database = initDatabase();
-  const stmt = database.prepare('DELETE FROM tasks WHERE id = ?');
-  stmt.run(id);
-  return { id };
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM tasks WHERE id = ?', [id], function(err) {
+      if (err) reject(err);
+      else resolve({ id, changes: this.changes });
+    });
+  });
 }
 
 // Settings operations
 function getSetting(key) {
-  const database = initDatabase();
-  const stmt = database.prepare('SELECT value FROM settings WHERE key = ?');
-  const row = stmt.get(key);
-  return row ? row.value : null;
+  return new Promise((resolve, reject) => {
+    db.get('SELECT value FROM settings WHERE key = ?', [key], (err, row) => {
+      if (err) reject(err);
+      else resolve(row ? row.value : null);
+    });
+  });
 }
 
 function setSetting(key, value) {
-  const database = initDatabase();
-  const stmt = database.prepare(`
-    INSERT OR REPLACE INTO settings (key, value, updated_at)
-    VALUES (?, ?, CURRENT_TIMESTAMP)
-  `);
-  stmt.run(key, value);
-  return { key, value };
+  return new Promise((resolve, reject) => {
+    db.run(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `, [key, value], function(err) {
+      if (err) reject(err);
+      else resolve({ key, value });
+    });
+  });
 }
 
 // Close the database connection
 function close() {
-  if (db) {
-    db.close();
-    db = null;
-  }
+  db.close((err) => {
+    if (err) console.error('Error closing database:', err);
+    else console.log('Database connection closed');
+  });
 }
 
 module.exports = {

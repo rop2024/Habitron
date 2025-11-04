@@ -1,0 +1,21 @@
+directories:
+  output: release
+  buildResources: assets
+files:
+  - filter:
+      - build/**/*
+      - build/**/*
+      - public/electron.js
+      - node_modules/**/*
+extraMetadata:
+  main: build/electron.js
+appId: com.yourcompany.yourapp
+productName: Your Electron App
+mac:
+  category: public.app-category.productivity
+win:
+  target: nsis
+linux:
+  target: AppImage
+extends: react-cra
+electronVersion: 39.0.0
