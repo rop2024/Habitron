@@ -42,6 +42,35 @@ db.serialize(() => {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Habit tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS habits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      frequency TEXT DEFAULT 'daily',
+      goal_count INTEGER DEFAULT 1,
+      color TEXT DEFAULT '#3B82F6',
+      icon TEXT DEFAULT '📝',
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS habit_checkins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      habit_id INTEGER NOT NULL,
+      checkin_date DATE NOT NULL,
+      completed BOOLEAN DEFAULT FALSE,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (habit_id) REFERENCES habits (id) ON DELETE CASCADE,
+      UNIQUE(habit_id, checkin_date)
+    )
+  `);
 });
 
 // Task operations
@@ -161,5 +190,6 @@ module.exports = {
   deleteTask,
   getSetting,
   setSetting,
-  close
+  close,
+  db // Export the database instance for HabitManager
 };
