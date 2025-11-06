@@ -227,34 +227,43 @@ class HabitManager {
   }
 
   getHabitStreak(habitId) {
-    // Get the most recent consecutive days with completed checkins
-    return this._getQuery(`
-      WITH RECURSIVE dates AS (
-        SELECT date('now') as checkin_date
-        UNION ALL
-        SELECT date(checkin_date, '-1 day')
-        FROM dates
-        WHERE checkin_date > date('now', '-30 days')
-      ),
-      checkins AS (
-        SELECT d.checkin_date,
-               CASE WHEN hc.completed = 1 THEN 1 ELSE 0 END as completed
-        FROM dates d
-        LEFT JOIN habit_checkins hc ON d.checkin_date = hc.checkin_date AND hc.habit_id = ?
-        ORDER BY d.checkin_date DESC
-      )
-      SELECT MIN(seq) as streak
-      FROM (
-        SELECT checkin_date, completed,
-               (SELECT COUNT(*)
-                FROM checkins c2
-                WHERE c2.checkin_date >= c1.checkin_date
-                AND c2.completed = 0) as seq
-        FROM checkins c1
-      )
-      WHERE completed = 1
-    `, [habitId])
-      .then(result => result ? result.streak || 0 : 0);
+    try {
+      // More accurate streak calculation that considers consecutive days
+      return this._getQuery(`
+        WITH dates AS (
+          SELECT date('now', '-' || (seq - 1) || ' days') as checkin_date
+          FROM (SELECT ROW_NUMBER() OVER () as seq FROM habit_checkins LIMIT 365)
+        ),
+        checkins AS (
+          SELECT d.checkin_date,
+                 CASE WHEN hc.completed = 1 THEN 1 ELSE 0 END as completed
+          FROM dates d
+          LEFT JOIN habit_checkins hc ON d.checkin_date = hc.checkin_date AND hc.habit_id = ?
+          ORDER BY d.checkin_date DESC
+        ),
+        streaks AS (
+          SELECT checkin_date, completed,
+                 (SELECT COUNT(*)
+                  FROM checkins c2
+                  WHERE c2.checkin_date >= c1.checkin_date
+                  AND c2.completed = 0) as gap_group
+          FROM checkins c1
+        )
+        SELECT COUNT(*) as streak
+        FROM streaks
+        WHERE completed = 1 AND gap_group = 0
+        ORDER BY checkin_date DESC
+        LIMIT 1
+      `, [habitId])
+        .then(result => result ? result.streak : 0)
+        .catch(error => {
+          console.error('Error calculating habit streak:', error);
+          return 0;
+        });
+    } catch (error) {
+      console.error('Error calculating habit streak:', error);
+      return 0;
+    }
   }
 
   getHabitStats(habitId, days = 30) {
