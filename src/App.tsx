@@ -8,16 +8,17 @@ import ProgressModal from './components/ProgressModal';
 interface AppHabit extends Habit {
   today_completed?: boolean;
   today_checkin_id?: number;
+  today_notes?: string;
   stats?: any;
 }
 
 const App: React.FC = () => {
   const [habits, setHabits] = useState<AppHabit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
-  const [progressModalOpen, setProgressModalOpen] = useState(false);
-  const [selectedHabitForProgress, setSelectedHabitForProgress] = useState<Habit | null>(null);
+  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
 
   useEffect(() => {
     loadHabits();
@@ -46,7 +47,7 @@ const App: React.FC = () => {
           await window.electronAPI.habits.create(habitData);
         }
         await loadHabits();
-        setIsModalOpen(false);
+        setIsAddModalOpen(false);
         setEditingHabit(null);
       }
     } catch (error) {
@@ -60,23 +61,24 @@ const App: React.FC = () => {
         await window.electronAPI.habits.checkin({
           habit_id: habitId,
           completed,
-          checkin_date: new Date().toISOString().split('T')[0],
-          notes: notes || ''
+          notes: notes || '',
+          checkin_date: new Date().toISOString().split('T')[0]
         });
         await loadHabits();
       }
     } catch (error) {
       console.error('Error updating checkin:', error);
+      throw error; // Re-throw to handle in component
     }
   };
 
   const handleEditHabit = (habit: Habit) => {
     setEditingHabit(habit);
-    setIsModalOpen(true);
+    setIsAddModalOpen(true);
   };
 
   const handleDeleteHabit = async (habitId: number) => {
-    if (window.confirm('Are you sure you want to delete this habit?')) {
+    if (window.confirm('Are you sure you want to delete this habit? This will also remove all check-in history.')) {
       try {
         if (window.electronAPI) {
           await window.electronAPI.habits.delete(habitId);
@@ -89,19 +91,28 @@ const App: React.FC = () => {
   };
 
   const handleViewProgress = (habit: Habit) => {
-    setSelectedHabitForProgress(habit);
-    setProgressModalOpen(true);
+    setSelectedHabit(habit);
+    setIsProgressModalOpen(true);
   };
 
   const openAddHabitModal = () => {
     setEditingHabit(null);
-    setIsModalOpen(true);
+    setIsAddModalOpen(true);
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
+  const closeAddModal = () => {
+    setIsAddModalOpen(false);
     setEditingHabit(null);
   };
+
+  const closeProgressModal = () => {
+    setIsProgressModalOpen(false);
+    setSelectedHabit(null);
+  };
+
+  // Calculate today's completion rate
+  const completedToday = habits.filter(h => h.today_completed).length;
+  const completionRate = habits.length > 0 ? Math.round((completedToday / habits.length) * 100) : 0;
 
   if (loading) {
     return (
@@ -123,8 +134,28 @@ const App: React.FC = () => {
             Habit Tracker
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Build better habits one day at a time. Track your progress and stay motivated with daily check-ins.
+            Build better habits one day at a time. {completedToday > 0 && 
+              <span className="font-semibold text-green-600">
+                Great job! You've completed {completedToday} habit{completedToday !== 1 ? 's' : ''} today.
+              </span>
+            }
           </p>
+          
+          {/* Today's Progress Bar */}
+          {habits.length > 0 && (
+            <div className="mt-6 max-w-md mx-auto">
+              <div className="flex justify-between text-sm text-gray-600 mb-2">
+                <span>Today's Progress</span>
+                <span>{completionRate}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="bg-green-500 h-3 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${completionRate}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Stats Overview */}
@@ -137,7 +168,7 @@ const App: React.FC = () => {
               Your Habits
             </h2>
             <p className="text-gray-600">
-              {habits.length} habit{habits.length !== 1 ? 's' : ''} tracked
+              {habits.length} habit{habits.length !== 1 ? 's' : ''} • {completedToday} completed today
             </p>
           </div>
           <button
@@ -193,20 +224,17 @@ const App: React.FC = () => {
 
         {/* Add/Edit Habit Modal */}
         <AddHabitModal
-          isOpen={isModalOpen}
-          onClose={closeModal}
+          isOpen={isAddModalOpen}
+          onClose={closeAddModal}
           onSave={handleCreateHabit}
           editingHabit={editingHabit}
         />
 
         {/* Progress Modal */}
         <ProgressModal
-          isOpen={progressModalOpen}
-          onClose={() => {
-            setProgressModalOpen(false);
-            setSelectedHabitForProgress(null);
-          }}
-          habit={selectedHabitForProgress}
+          isOpen={isProgressModalOpen}
+          onClose={closeProgressModal}
+          habit={selectedHabit}
         />
       </div>
     </div>
