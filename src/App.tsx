@@ -3,6 +3,7 @@ import { Habit } from './types/database';
 import HabitCard from './components/HabitCard';
 import AddHabitModal from './components/AddHabitModal';
 import StatsOverview from './components/StatsOverview';
+import ProgressModal from './components/ProgressModal';
 
 interface AppHabit extends Habit {
   today_completed?: boolean;
@@ -15,6 +16,8 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [selectedHabitForProgress, setSelectedHabitForProgress] = useState<Habit | null>(null);
 
   useEffect(() => {
     loadHabits();
@@ -86,10 +89,8 @@ const App: React.FC = () => {
   };
 
   const handleViewProgress = (habit: Habit) => {
-    // TODO: Implement progress view modal or navigation
-    console.log('View progress for habit:', habit.name);
-    // For now, just show an alert
-    alert(`Progress view for "${habit.name}" - Feature coming soon!`);
+    setSelectedHabitForProgress(habit);
+    setProgressModalOpen(true);
   };
 
   const openAddHabitModal = () => {
@@ -196,6 +197,16 @@ const App: React.FC = () => {
           onClose={closeModal}
           onSave={handleCreateHabit}
           editingHabit={editingHabit}
+        />
+
+        {/* Progress Modal */}
+        <ProgressModal
+          isOpen={progressModalOpen}
+          onClose={() => {
+            setProgressModalOpen(false);
+            setSelectedHabitForProgress(null);
+          }}
+          habit={selectedHabitForProgress}
         />
       </div>
     </div>
