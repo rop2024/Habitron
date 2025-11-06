@@ -51,13 +51,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCheckin = async (habitId: number, completed: boolean) => {
+  const handleCheckin = async (habitId: number, completed: boolean, notes?: string) => {
     try {
       if (window.electronAPI) {
         await window.electronAPI.habits.checkin({
           habit_id: habitId,
           completed,
-          checkin_date: new Date().toISOString().split('T')[0]
+          checkin_date: new Date().toISOString().split('T')[0],
+          notes: notes || ''
         });
         await loadHabits();
       }
@@ -82,6 +83,13 @@ const App: React.FC = () => {
         console.error('Error deleting habit:', error);
       }
     }
+  };
+
+  const handleViewProgress = (habit: Habit) => {
+    // TODO: Implement progress view modal or navigation
+    console.log('View progress for habit:', habit.name);
+    // For now, just show an alert
+    alert(`Progress view for "${habit.name}" - Feature coming soon!`);
   };
 
   const openAddHabitModal = () => {
@@ -152,6 +160,7 @@ const App: React.FC = () => {
                 onCheckin={handleCheckin}
                 onEdit={handleEditHabit}
                 onDelete={handleDeleteHabit}
+                onViewProgress={handleViewProgress}
               />
             ))}
           </div>
